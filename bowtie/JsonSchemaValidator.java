@@ -9,45 +9,35 @@ import io.github.georgeakulov.json_schema.SchemaBuilder;
 import io.github.georgeakulov.json_schema.common.JsonUtils;
 import io.github.georgeakulov.json_schema.common.URIUtils;
 import io.github.georgeakulov.json_schema.dialects.*;
-import reactor.util.function.Tuples;
 
 import java.io.*;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
-import java.util.stream.Stream;
 
-public class JsonSchemaValidator {
+public final class JsonSchemaValidator {
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private static final Set<URI> SUPPORTED_DIALECTS = Set.of(Defaults.DIALECT_2020_12,
             Defaults.DIALECT_2019_09, Defaults.DIALECT_07);
 
-    private static JsonNode preloadSpecifications(String name) {
-        try {
-            return new ObjectMapper().readTree(ClassLoader.getSystemClassLoader().getResourceAsStream(name));
-        }
-        catch(IOException e) {
-            throw new RuntimeException("Can`t preload the specifications from the classpath", e);
-        }
-    }
-
     private final PrintStream ps;
     private final Attributes attributes;
     private URI usedDialect;
 
-    private JsonSchemaValidator(PrintStream ps) throws Exception {
+    private JsonSchemaValidator(PrintStream ps) throws IOException {
         this.ps = ps;
         InputStream is = Objects.requireNonNull(getClass().getResourceAsStream("/META-INF/MANIFEST.MF"));
         this.attributes = new Manifest(is).getMainAttributes();
     }
 
-    public static void main(String [] args) throws Exception{
+    public static void main(String [] args) throws IOException{
             new JsonSchemaValidator(System.out)
                     .loop(
-                            new BufferedReader(new InputStreamReader(System.in))
+                            new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))
                     );
 	}
 
@@ -56,19 +46,14 @@ public class JsonSchemaValidator {
     }
 
     private void dispatch(String line) {
-        try {
 
-            JsonNode cmd = JsonUtils.parse(line);
-            switch (cmd.path("cmd").asText()) {
-                case "start"    -> dispatchReq(cmd, StartReq.class, this::handleStart);
-                case "dialect"  -> dispatchReq(cmd, DialectReq.class, this::handleDialect);
-                case "run"      -> dispatchReq(cmd, RunReq.class, this::handlerRun);
-                case "stop"     -> System.exit(0);
-                default -> throw new IllegalArgumentException("Unsupported command: " + cmd);
-            }
-        }
-        catch(Exception e) {
-            throw new RuntimeException("Exception while processing command: " + line, e);
+        JsonNode cmd = JsonUtils.parse(line);
+        switch (cmd.path("cmd").asText()) {
+            case "start"    -> dispatchReq(cmd, StartReq.class, this::handleStart);
+            case "dialect"  -> dispatchReq(cmd, DialectReq.class, this::handleDialect);
+            case "run"      -> dispatchReq(cmd, RunReq.class, this::handlerRun);
+            case "stop"     -> System.exit(0);
+            default -> throw new IllegalArgumentException("Unsupported command: " + cmd);
         }
     }
 
@@ -110,17 +95,17 @@ public class JsonSchemaValidator {
         );
     }
 
-    private <REQ> void dispatchReq(JsonNode node,
-                                   Class<REQ> reqType,
-                                   ExceptionableFn<REQ, Object> dispatcher) {
+    private <T> void dispatchReq(JsonNode node,
+                                 Class<T> reqType,
+                                 ExceptionableFn<T, Object> dispatcher) {
         try {
-            REQ req = MAPPER.treeToValue(node, reqType);
+            T req = MAPPER.treeToValue(node, reqType);
             Object rsp = dispatcher.apply(req);
             ps.println(MAPPER.writeValueAsString(rsp));
             ps.flush();
         }
-        catch(Throwable thr) {
-            throw new RuntimeException(thr);
+        catch(Exception thr) {
+            throw new IllegalArgumentException("Error on dispatch request:" + node, thr);
         }
     }
 
@@ -139,7 +124,8 @@ public class JsonSchemaValidator {
     private record RunRsp(JsonNode seq, List<TestResult> results){}
     private record TestResult(boolean valid) {}
 
-    private interface ExceptionableFn<ARG, RET> {
-        RET apply(ARG arg) throws Throwable;
+    @FunctionalInterface
+    private interface ExceptionableFn<A, R> {
+        R apply(A arg) throws Exception;
     }
 }
