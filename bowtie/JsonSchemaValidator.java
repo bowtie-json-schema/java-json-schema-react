@@ -79,7 +79,7 @@ public final class JsonSchemaValidator {
 
     private DialectRsp handleDialect(DialectReq dialectReq) {
         usedDialect = URIUtils.clearEmptyFragments(URI.create(dialectReq.dialect()));
-        return new DialectRsp(SUPPORTED_DIALECTS.contains(usedDialect));
+        return new DialectRsp(true);
     }
 
     private RunRsp handlerRun(RunReq req) {
