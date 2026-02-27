@@ -9,7 +9,6 @@ import io.github.georgeakulov.json_schema.SchemaBuilder;
 import io.github.georgeakulov.json_schema.common.JsonUtils;
 import io.github.georgeakulov.json_schema.common.URIUtils;
 import io.github.georgeakulov.json_schema.dialects.*;
-
 import java.io.*;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -24,9 +23,9 @@ public final class JsonSchemaValidator {
   private static final Set<URI> SUPPORTED_DIALECTS = Set.of(
       Defaults.DIALECT_2020_12, Defaults.DIALECT_2019_09, Defaults.DIALECT_07);
 
-    private final PrintStream ps;
-    private final Attributes attributes;
-    private URI usedDialect;
+  private final PrintStream ps;
+  private final Attributes attributes;
+  private URI usedDialect;
 
   private JsonSchemaValidator(PrintStream ps) throws IOException {
     this.ps = ps;
@@ -37,22 +36,24 @@ public final class JsonSchemaValidator {
 
   public static void main(String[] args) throws IOException {
     new JsonSchemaValidator(System.out)
-        .loop(new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8)));
+        .loop(new BufferedReader(
+            new InputStreamReader(System.in, StandardCharsets.UTF_8)));
   }
 
   private void loop(BufferedReader br) { br.lines().forEach(this::dispatch); }
 
-    private void dispatch(String line) {
+  private void dispatch(String line) {
 
-        JsonNode cmd = JsonUtils.parse(line);
-        switch (cmd.path("cmd").asText()) {
-            case "start"    -> dispatchReq(cmd, StartReq.class, this::handleStart);
-            case "dialect"  -> dispatchReq(cmd, DialectReq.class, this::handleDialect);
-            case "run"      -> dispatchReq(cmd, RunReq.class, this::handlerRun);
-            case "stop"     -> System.exit(0);
-            default -> throw new IllegalArgumentException("Unsupported command: " + cmd);
-        }
+    JsonNode cmd = JsonUtils.parse(line);
+    switch (cmd.path("cmd").asText()) {
+    case "start" -> dispatchReq(cmd, StartReq.class, this::handleStart);
+    case "dialect" -> dispatchReq(cmd, DialectReq.class, this::handleDialect);
+    case "run" -> dispatchReq(cmd, RunReq.class, this::handlerRun);
+    case "stop" -> System.exit(0);
+    default ->
+      throw new IllegalArgumentException("Unsupported command: " + cmd);
     }
+  }
 
   private StartRsp handleStart(StartReq req) {
     if (req.version != 1) {
@@ -94,18 +95,18 @@ public final class JsonSchemaValidator {
             .toList());
   }
 
-  private <T> void dispatchReq(JsonNode node,
-                                 Class<T> reqType,
-                                 ExceptionableFn<T, Object> dispatcher) {
+  private <T> void dispatchReq(JsonNode node, Class<T> reqType,
+                               ExceptionableFn<T, Object> dispatcher) {
     try {
       T req = MAPPER.treeToValue(node, reqType);
       Object rsp = dispatcher.apply(req);
       ps.println(MAPPER.writeValueAsString(rsp));
       ps.flush();
     } catch (Exception thr) {
-      throw new IllegalArgumentException("Error on dispatch request:" + node, thr);
-        }
+      throw new IllegalArgumentException("Error on dispatch request:" + node,
+                                         thr);
     }
+  }
 
   private record StartReq(int version) {}
   private record StartRsp(int version, Implementation implementation) {}
@@ -127,7 +128,7 @@ public final class JsonSchemaValidator {
   private record TestResult(boolean valid) {}
 
   @FunctionalInterface
-    private interface ExceptionableFn<A, R> {
+  private interface ExceptionableFn<A, R> {
     R apply(A arg) throws Exception;
   }
 }
