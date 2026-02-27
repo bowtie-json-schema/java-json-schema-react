@@ -19,31 +19,28 @@ import java.util.jar.Manifest;
 
 public final class JsonSchemaValidator {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper()
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    private static final Set<URI> SUPPORTED_DIALECTS = Set.of(Defaults.DIALECT_2020_12,
-            Defaults.DIALECT_2019_09, Defaults.DIALECT_07);
+  private static final ObjectMapper MAPPER = new ObjectMapper().configure(
+      DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+  private static final Set<URI> SUPPORTED_DIALECTS = Set.of(
+      Defaults.DIALECT_2020_12, Defaults.DIALECT_2019_09, Defaults.DIALECT_07);
 
     private final PrintStream ps;
     private final Attributes attributes;
     private URI usedDialect;
 
-    private JsonSchemaValidator(PrintStream ps) throws IOException {
-        this.ps = ps;
-        InputStream is = Objects.requireNonNull(getClass().getResourceAsStream("/META-INF/MANIFEST.MF"));
-        this.attributes = new Manifest(is).getMainAttributes();
-    }
+  private JsonSchemaValidator(PrintStream ps) throws IOException {
+    this.ps = ps;
+    InputStream is = Objects.requireNonNull(
+        getClass().getResourceAsStream("/META-INF/MANIFEST.MF"));
+    this.attributes = new Manifest(is).getMainAttributes();
+  }
 
-    public static void main(String [] args) throws IOException{
-            new JsonSchemaValidator(System.out)
-                    .loop(
-                            new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))
-                    );
-	}
+  public static void main(String[] args) throws IOException {
+    new JsonSchemaValidator(System.out)
+        .loop(new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8)));
+  }
 
-    private void loop(BufferedReader br) {
-        br.lines().forEach(this::dispatch);
-    }
+  private void loop(BufferedReader br) { br.lines().forEach(this::dispatch); }
 
     private void dispatch(String line) {
 
@@ -57,75 +54,80 @@ public final class JsonSchemaValidator {
         }
     }
 
-    private StartRsp handleStart(StartReq req) {
-        if(req.version != 1) {
-            throw new IllegalStateException("Unsupported protocol version: " + req);
-        }
-        return new StartRsp(req.version, new Implementation(
-                "java",
-                attributes.getValue("Implementation-Name"),
-                attributes.getValue("Implementation-Version"),
-                SUPPORTED_DIALECTS.stream().map(Object::toString).toList(),
-                "https://github.com/georgeakulov/json-schema",
-                "https://github.com/georgeakulov/json-schema",
-                "https://github.com/georgeakulov/json-schema/issues",
-                "https://github.com/georgeakulov/json-schema"
-        ));
+  private StartRsp handleStart(StartReq req) {
+    if (req.version != 1) {
+      throw new IllegalStateException("Unsupported protocol version: " + req);
+    }
+    return new StartRsp(
+        req.version,
+        new Implementation(
+            "java", attributes.getValue("Implementation-Name"),
+            attributes.getValue("Implementation-Version"),
+            SUPPORTED_DIALECTS.stream().map(Object::toString).toList(),
+            "https://github.com/georgeakulov/json-schema",
+            "https://github.com/georgeakulov/json-schema",
+            "https://github.com/georgeakulov/json-schema/issues",
+            "https://github.com/georgeakulov/json-schema"));
+  }
+
+  private DialectRsp handleDialect(DialectReq dialectReq) {
+    usedDialect =
+        URIUtils.clearEmptyFragments(URI.create(dialectReq.dialect()));
+    return new DialectRsp(SUPPORTED_DIALECTS.contains(usedDialect));
+  }
+
+  private RunRsp handlerRun(RunReq req) {
+    SchemaBuilder builder =
+        SchemaBuilder.create().setDefaultDialect(usedDialect);
+
+    // Apply registry if exists
+    if (req.testCase.registry != null) {
+      req.testCase.registry.forEachEntry(builder::addMappingIdToSchema);
     }
 
-    private DialectRsp handleDialect(DialectReq dialectReq) {
-        usedDialect = URIUtils.clearEmptyFragments(URI.create(dialectReq.dialect()));
-        return new DialectRsp(SUPPORTED_DIALECTS.contains(usedDialect));
-    }
+    Schema schema = builder.compile(req.testCase.schema);
 
-    private RunRsp handlerRun(RunReq req) {
-        SchemaBuilder builder = SchemaBuilder.create()
-                .setDefaultDialect(usedDialect);
+    return new RunRsp(
+        req.seq,
+        req.testCase.tests.stream()
+            .map(test -> new TestResult(schema.apply(test.instance).isOk()))
+            .toList());
+  }
 
-        // Apply registry if exists
-        if(req.testCase.registry != null) {
-            req.testCase.registry.forEachEntry(builder::addMappingIdToSchema);
-        }
-
-        Schema schema = builder.compile(req.testCase.schema);
-
-        return new RunRsp(req.seq, req.testCase.tests.stream()
-                .map(test -> new TestResult(schema.apply(test.instance).isOk()))
-                .toList()
-        );
-    }
-
-    private <T> void dispatchReq(JsonNode node,
+  private <T> void dispatchReq(JsonNode node,
                                  Class<T> reqType,
                                  ExceptionableFn<T, Object> dispatcher) {
-        try {
-            T req = MAPPER.treeToValue(node, reqType);
-            Object rsp = dispatcher.apply(req);
-            ps.println(MAPPER.writeValueAsString(rsp));
-            ps.flush();
-        }
-        catch(Exception thr) {
-            throw new IllegalArgumentException("Error on dispatch request:" + node, thr);
+    try {
+      T req = MAPPER.treeToValue(node, reqType);
+      Object rsp = dispatcher.apply(req);
+      ps.println(MAPPER.writeValueAsString(rsp));
+      ps.flush();
+    } catch (Exception thr) {
+      throw new IllegalArgumentException("Error on dispatch request:" + node, thr);
         }
     }
 
-    private record StartReq(int version) {}
-    private record StartRsp(int version, Implementation implementation){}
-    private record Implementation(String language, String name, String version,
-                                  List<String> dialects, String homepage,
-                                  String documentation, String issues, String source){}
+  private record StartReq(int version) {}
+  private record StartRsp(int version, Implementation implementation) {}
+  private record
+      Implementation(String language, String name, String version,
+                     List<String> dialects, String homepage,
+                     String documentation, String issues, String source) {}
 
-    private record DialectReq(String dialect) {}
-    private record DialectRsp(boolean ok){}
+  private record DialectReq(String dialect) {}
+  private record DialectRsp(boolean ok) {}
 
-    private record RunReq(JsonNode seq, @JsonProperty("case") TestCase testCase) {}
-    private record TestCase(String description, String comment, JsonNode schema, JsonNode registry, List<Test> tests) {}
-    private record Test(String description, String comment, JsonNode instance, boolean valid) {}
-    private record RunRsp(JsonNode seq, List<TestResult> results){}
-    private record TestResult(boolean valid) {}
+  private record RunReq(JsonNode seq, @JsonProperty("case") TestCase testCase) {
+  }
+  private record TestCase(String description, String comment, JsonNode schema,
+                          JsonNode registry, List<Test> tests) {}
+  private record Test(String description, String comment, JsonNode instance,
+                      boolean valid) {}
+  private record RunRsp(JsonNode seq, List<TestResult> results) {}
+  private record TestResult(boolean valid) {}
 
-    @FunctionalInterface
+  @FunctionalInterface
     private interface ExceptionableFn<A, R> {
-        R apply(A arg) throws Exception;
-    }
+    R apply(A arg) throws Exception;
+  }
 }
