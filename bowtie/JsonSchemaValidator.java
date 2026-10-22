@@ -83,7 +83,10 @@ public final class JsonSchemaValidator {
 
     // Apply registry if exists
     if (req.testCase.registry != null) {
-      req.testCase.registry.forEachEntry(builder::addMappingIdToSchema);
+      req.testCase.registry.forEachEntry(
+          (uri, schema)
+              -> builder.addMappingIdToUriAndSchema(uri, URI.create(uri),
+                                                    schema));
     }
 
     Schema schema = builder.compile(req.testCase.schema);
