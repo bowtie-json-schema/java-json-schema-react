@@ -1,5 +1,6 @@
 package bowtie;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -78,6 +79,14 @@ public final class JsonSchemaValidator {
   }
 
   private RunRsp handlerRun(RunReq req) {
+    if (req.output != null && !req.output.equals("flag")) {
+      return new RunRsp(
+          req.seq,
+          req.testCase.tests.stream()
+              .map(test -> TestResult.skipped("unsupported output format " + req.output))
+              .toList());
+    }
+
     SchemaBuilder builder =
         SchemaBuilder.create().setDefaultDialect(usedDialect);
 
@@ -94,7 +103,7 @@ public final class JsonSchemaValidator {
     return new RunRsp(
         req.seq,
         req.testCase.tests.stream()
-            .map(test -> new TestResult(schema.apply(test.instance).isOk()))
+            .map(test -> TestResult.valid(schema.apply(test.instance).isOk()))
             .toList());
   }
 
@@ -121,14 +130,24 @@ public final class JsonSchemaValidator {
   private record DialectReq(String dialect) {}
   private record DialectRsp(boolean ok) {}
 
-  private record RunReq(JsonNode seq, @JsonProperty("case") TestCase testCase) {
-  }
+  private record RunReq(JsonNode seq, @JsonProperty("case") TestCase testCase,
+                        String output) {}
   private record TestCase(String description, String comment, JsonNode schema,
                           JsonNode registry, List<Test> tests) {}
   private record Test(String description, String comment, JsonNode instance,
                       boolean valid) {}
   private record RunRsp(JsonNode seq, List<TestResult> results) {}
-  private record TestResult(boolean valid) {}
+
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  private record TestResult(Boolean valid, Boolean skipped, String message) {
+    public static TestResult valid(boolean valid) {
+      return new TestResult(valid, null, null);
+    }
+
+    public static TestResult skipped(String message) {
+      return new TestResult(null, true, message);
+    }
+  }
 
   @FunctionalInterface
   private interface ExceptionableFn<A, R> {
